@@ -1,0 +1,294 @@
+#! /usr/bin/python
+
+from gi.repository import Gtk, Gio, GdkPixbuf, Gdk
+import os, sys, imghdr
+from image_manipulation import Helpers as manip
+
+
+class ImageViewer(Gtk.Window):
+    def __init__(self):
+        self.pixbuf = None
+        self.current_folder = None
+        self.current_file = None
+
+        icon_size = Gtk.IconSize.SMALL_TOOLBAR
+        
+        # The window
+        Gtk.Window.__init__(self)
+
+        # Header bar
+        self.header_bar = Gtk.HeaderBar()
+        self.header_bar.set_show_close_button(True)
+        self.header_bar.props.title = "Pretty"
+        self.set_titlebar(self.header_bar)
+        self.connect("delete-event", Gtk.main_quit)
+
+        # Forward and back buttons
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        Gtk.StyleContext.add_class(box.get_style_context(), "linked")
+
+        button = Gtk.Button()
+        button.add(Gtk.Arrow(Gtk.ArrowType.LEFT, Gtk.ShadowType.NONE))
+        box.add(button)
+        button.connect_after('clicked', self.previous_image)
+
+        button = Gtk.Button()
+        button.add(Gtk.Arrow(Gtk.ArrowType.RIGHT, Gtk.ShadowType.NONE))
+        box.add(button)
+        button.connect_after('clicked', self.next_image)
+
+        self.header_bar.pack_start(box)
+
+        # Rotate left and right buttons
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        Gtk.StyleContext.add_class(box.get_style_context(), "linked")
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="object-rotate-left")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.rotate_left)
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="object-rotate-right")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.rotate_right)
+        
+        self.header_bar.pack_start(box)
+
+        # Zoom buttons
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        Gtk.StyleContext.add_class(box.get_style_context(), "linked")
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="zoom-out")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.zoom_out)
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="zoom-original")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.zoom_original)
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="zoom-in")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.zoom_in)
+        
+        self.header_bar.pack_start(box)
+
+        # Fit window and adjust window size buttons
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        Gtk.StyleContext.add_class(box.get_style_context(), "linked")
+
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="zoom-fit-best")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.zoom_fit_window)
+
+        # Adjust window size
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="view-refresh")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        box.add(button)
+        button.connect_after('clicked', self.zoom_adjust_window_size)
+
+        self.header_bar.pack_start(box)
+
+        # Settings button
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="document-properties")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        self.header_bar.pack_end(button)
+        button.connect_after('clicked', self.settings)
+
+        #Creating a popover
+        self.popover = Gtk.Popover.new(button)
+        self.popover.set_size_request(100,100)
+        button = Gtk.Button("Click me!")
+        self.popover.add(button)
+
+        # Open file button
+        button = Gtk.Button()
+        icon = Gio.ThemedIcon(name="folder-pictures")
+        image = Gtk.Image.new_from_gicon(icon, icon_size)
+        button.add(image)
+        self.header_bar.pack_end(button)
+        button.connect_after('clicked', self.open_image)
+
+        # Scroll box
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.add(scrolled)
+
+        viewport = Gtk.Viewport()
+        #viewport.set_shadow_type(gtk.SHADOW_NONE)
+        scrolled.add(viewport)
+
+        # Image
+        self.image = Gtk.Image()
+        viewport.add(self.image)
+
+        # Open argument image, if one.
+        if len(sys.argv) == 2 and os.path.isfile(sys.argv[1]) and imghdr.what(sys.argv[1]):
+            file_name = sys.argv[1]
+            self.pixbuf = GdkPixbuf.Pixbuf.new_from_file(file_name)
+            self.image.set_from_pixbuf(manip.scale_fit_screen(self.pixbuf))
+            self.current_folder, self.current_file = os.path.split(file_name)
+            self.adjust_window_size()
+            self.header_bar.set_title(self.current_file)
+        elif len(sys.argv) > 1:
+            print "Error: Too many or invalid arguments."
+
+        self.show_all()
+
+
+    def settings(self, button):
+        if self.popover.get_visible():
+            self.popover.hide()
+        else:
+            self.popover.show_all()
+
+
+    def open_image(self, button):
+	dialog = Gtk.FileChooserDialog("Open Image", button.get_toplevel(), Gtk.FileChooserAction.OPEN);
+	dialog.add_button(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
+	dialog.add_button(Gtk.STOCK_OK, Gtk.ResponseType.OK)
+	dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.set_use_preview_label(False)
+
+	file_filter = Gtk.FileFilter()
+	file_filter.add_pixbuf_formats()
+	dialog.set_filter(file_filter)
+
+        preview = Gtk.Image()
+        dialog.set_preview_widget(preview)
+        dialog.connect("update-preview", self.update_preview, preview)
+
+        if self.current_folder:
+            dialog.set_current_folder(self.current_folder)
+        else:
+            dialog.set_current_folder(os.environ['HOME'])
+
+	if dialog.run() == Gtk.ResponseType.OK:
+            file_name = dialog.get_filename()
+            self.pixbuf = GdkPixbuf.Pixbuf.new_from_file(file_name)
+            self.image.set_from_pixbuf(manip.scale_fit_screen(self.pixbuf))
+            self.current_file = file_name.strip(self.current_folder)
+            self.current_folder, self.current_file = os.path.split(file_name)
+            self.adjust_window_size()
+            self.header_bar.set_title(self.current_file)
+	dialog.destroy()
+
+
+    def update_preview(self, file_chooser, preview):
+        file_name = file_chooser.get_preview_filename()
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(file_name)
+            if pixbuf:
+                preview.set_from_pixbuf(manip.make_preview(pixbuf))
+                file_chooser.set_preview_widget_active(True)
+        except:
+            pass
+            
+            
+    def rotate_left(self, button):
+        pixbuf = self.image.get_pixbuf()
+        if pixbuf:
+            self.pixbuf = manip.rotate_left(self.pixbuf)
+            self.image.set_from_pixbuf(self.pixbuf)
+            self.fit_window()
+
+
+    def rotate_right(self, button):
+        pixbuf = self.image.get_pixbuf()
+        if pixbuf:
+            self.pixbuf = manip.rotate_right(self.pixbuf)
+            self.image.set_from_pixbuf(self.pixbuf)
+            self.fit_window()
+
+
+    def zoom_in(self, button):
+        pixbuf = self.image.get_pixbuf()
+        if pixbuf:
+            self.image.set_from_pixbuf(manip.zoom_in(self.pixbuf, pixbuf.get_width(), pixbuf.get_height()))
+
+
+    def zoom_original(self, button):
+        if self.image.get_pixbuf():
+            self.image.set_from_pixbuf(self.pixbuf)
+
+
+    def zoom_out(self, button):
+        pixbuf = self.image.get_pixbuf()
+        if pixbuf:
+            self.image.set_from_pixbuf(manip.zoom_out(self.pixbuf, pixbuf.get_width(), pixbuf.get_height()))
+
+
+    def zoom_fit_window(self, button):
+        self.fit_window()
+
+    
+    def zoom_adjust_window_size(self, button):
+        self.adjust_window_size()
+
+
+    def fit_window(self):
+        pixbuf = self.image.get_pixbuf()
+        if pixbuf:
+            self.image.set_from_pixbuf(manip.scale_fit_window(self, pixbuf))
+
+
+    def adjust_window_size(self):
+        pixbuf = self.image.get_pixbuf()
+        self.resize(pixbuf.get_width()+158, pixbuf.get_height()+201)
+
+
+    def previous_image(self, button):
+        self.next_in_seq(-1)
+        
+
+    def next_image(self, button):
+        self.next_in_seq(1)
+
+
+    def next_in_seq(self, increment):
+        files = []
+        images = []
+        for (_, _, file_names) in os.walk(self.current_folder):
+            files.extend(file_names)
+            break
+        for file_name in files:
+            try:
+                if imghdr.what(self.current_folder + "/" + file_name):
+                    images.append(file_name)
+            except:
+                pass
+        images.sort()
+        file_name = images[(images.index(self.current_file) + increment) % len(images)]
+        self.pixbuf = GdkPixbuf.Pixbuf.new_from_file(self.current_folder + "/" + file_name)
+        self.image.set_from_pixbuf(manip.scale_fit_window(self, self.pixbuf))
+        self.current_file = file_name
+        self.header_bar.set_title(self.current_file)
+        
+
+def main():
+    app = ImageViewer()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
